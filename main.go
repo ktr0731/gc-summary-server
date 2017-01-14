@@ -15,6 +15,7 @@ import (
 var c redis.Conn
 
 func lastDateFromRedis() (time.Time, error) {
+	log.Println("Fetching last played date from Redis...")
 	loc, _ := time.LoadLocation("Asia/Tokyo")
 
 	lastDateString, err := redis.String(c.Do("GET", "lastDate"))
@@ -23,6 +24,8 @@ func lastDateFromRedis() (time.Time, error) {
 	}
 
 	lastDate, err := time.ParseInLocation("2006-01-02 15:04:05", lastDateString, loc)
+
+	log.Printf("Last played date: %s", lastDate)
 
 	return lastDate, nil
 }
@@ -72,11 +75,16 @@ func main() {
 
 	var err error
 
+	log.Println("Connecting to Redis server...")
 	c, err = redis.Dial("tcp", ":6379")
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer c.Close()
+	log.Println("Connected to Redis server")
+	defer func() {
+		c.Close()
+		log.Println("Redis Connection closed")
+	}()
 
 	exists, err := redis.Bool(c.Do("EXISTS", "lastDate"))
 	if err != nil {
@@ -94,11 +102,13 @@ func main() {
 		return
 	}
 
+	log.Println("Fetching musics summary from mypage...")
 	summary, err := client.MusicSummary()
 	if err != nil {
 		log.Print(err)
 		return
 	}
+	log.Println("Fetching musics summary was successful")
 
 	text := ""
 
@@ -205,8 +215,10 @@ func main() {
 		}
 
 		c.Do("SET", music.ID, string(bytes))
+		log.Printf("Updated music cache: %s", music.Title)
 	}
 
+	log.Println("Updated lastDate")
 	c.Do("SET", "lastDate", time.Now())
 	log.Println("Completed")
 }
