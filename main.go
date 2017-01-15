@@ -14,9 +14,33 @@ import (
 	"github.com/lycoris0731/go-groovecoaster/groovecoaster"
 )
 
-var (
-	c redis.Conn
-)
+var c redis.Conn
+
+type item struct {
+	name string
+	diff []string
+}
+
+func (i item) String() string {
+	text := i.name + "\n"
+
+	for j, v := range i.diff {
+		switch groovecoaster.Difficulty(j) {
+		case groovecoaster.Simple:
+			text += "  [S] "
+		case groovecoaster.Normal:
+			text += "  [N] "
+		case groovecoaster.Hard:
+			text += "  [H] "
+		case groovecoaster.Extra:
+			text += "  [E] "
+		}
+
+		text += v + "\n"
+	}
+
+	return text
+}
 
 func lastDateFromRedis() (time.Time, error) {
 	log.Println("Fetching last played date from Redis...")
@@ -45,7 +69,7 @@ func lastDateFromRedis() (time.Time, error) {
 	return lastDate, nil
 }
 
-func splitnewMusicSummary(summary []*groovecoaster.MusicSummary, lastDate time.Time) []*groovecoaster.MusicSummary {
+func splitMusicSummary(summary []*groovecoaster.MusicSummary, lastDate time.Time) []*groovecoaster.MusicSummary {
 	loc, _ := time.LoadLocation("Asia/Tokyo")
 
 	for i, m := range summary {
@@ -85,27 +109,37 @@ func musicFromRedis(id string) (*groovecoaster.MusicDetail, error) {
 	return &music, nil
 }
 
-func tweet(text string) error {
+func tweet(items []item) error {
 	anaconda.SetConsumerKey(os.Getenv("TWITTER_CONSUMER_KEY"))
 	anaconda.SetConsumerSecret(os.Getenv("TWITTER_CONSUMER_SECRET"))
 	api := anaconda.NewTwitterApi(os.Getenv("TWITTER_ACCESS_TOKEN"), os.Getenv("TWITTER_ACCESS_TOKEN_SECRET"))
-	_, err := api.PostTweet(text, nil)
-	if err != nil {
-		return err
+
+	tweet := ""
+	for _, item := range items {
+		if len(item.diff) != 0 {
+			text := item.String()
+			if len(tweet+text) > 140 {
+				_, err := api.PostTweet(tweet, nil)
+				if err != nil {
+					return err
+				}
+
+				tweet = text
+			}
+		}
 	}
+
+	if tweet != "" {
+		_, err := api.PostTweet(tweet, nil)
+		if err != nil {
+			return err
+		}
+	}
+
+	log.Println("Tweeted")
 
 	return nil
 }
-
-type item struct {
-	name string
-	diff []string
-}
-
-func (i item) String() string {
-	return ""
-}
-
 func main() {
 	client := groovecoaster.New()
 
@@ -137,9 +171,10 @@ func main() {
 
 	text := ""
 
-	var items []item
-	for _, music := range splitnewMusicSummary(summary, lastDate) {
-		old, err := musicFromRedis(strconv.Itoa(music.ID))
+	splittedSummary := splitMusicSummary(summary, lastDate)
+	items := make([]item, len(splittedSummary))
+	for _, music := range splittedSummary {
+		oldMusic, err := musicFromRedis(strconv.Itoa(music.ID))
 		if err != nil {
 			log.Print(err)
 			return
@@ -154,8 +189,8 @@ func main() {
 		var item item
 		item.name = music.Title
 
-		if old == nil {
-			old = newMusic
+		if oldMusic == nil {
+			oldMusic = newMusic
 		}
 
 		results := []*groovecoaster.Result{newMusic.Simple, newMusic.Normal, newMusic.Hard}
@@ -163,35 +198,27 @@ func main() {
 			results = append(results, newMusic.Extra)
 		}
 
-		var summary string
 		for i, diff := range results {
-			var oldDiff *groovecoaster.Result
-
 			if diff == nil {
 				continue
 			}
 
-			var diffName string
+			var oldMusicDiff *groovecoaster.Result
+			archived := []string{}
 
 			switch groovecoaster.Difficulty(i) {
 			case groovecoaster.Simple:
-				diffName = "  [S] "
-				oldDiff = old.Simple
+				oldMusicDiff = oldMusic.Simple
 			case groovecoaster.Normal:
-				diffName = "  [N] "
-				oldDiff = old.Normal
+				oldMusicDiff = oldMusic.Normal
 			case groovecoaster.Hard:
-				diffName = "  [H] "
-				oldDiff = old.Hard
+				oldMusicDiff = oldMusic.Hard
 			case groovecoaster.Extra:
 				if !newMusic.HasEx {
 					continue
 				}
-				diffName = "  [E] "
-				oldDiff = old.Extra
+				oldMusicDiff = oldMusic.Extra
 			}
-
-			archived := []string{}
 
 			// どれかにあてはまる場合
 			switch {
@@ -203,30 +230,23 @@ func main() {
 				archived = append(archived, "NM")
 			}
 
-			if diff.MaxChain > oldDiff.MaxChain {
-				archived = append(archived, fmt.Sprintf("⛓ +%d", diff.MaxChain-oldDiff.MaxChain))
+			if diff.MaxChain > oldMusicDiff.MaxChain {
+				archived = append(archived, fmt.Sprintf("⛓ +%d", diff.MaxChain-oldMusicDiff.MaxChain))
 			}
 
 			if diff.PlayCount == 100 {
 				archived = append(archived, "100 Played!")
 			}
 
-			if diff.Score > oldDiff.Score {
-				archived = append(archived, fmt.Sprintf("💯 +%d", diff.MaxChain-oldDiff.MaxChain))
+			if diff.Score > oldMusicDiff.Score {
+				archived = append(archived, fmt.Sprintf("💯 +%d", diff.MaxChain-oldMusicDiff.MaxChain))
 			}
 
 			if len(archived) == 0 {
 				continue
 			}
 
-			summary += diffName + strings.Join(archived, ", ") + "\n"
 			item.diff = append(item.diff, strings.Join(archived, ", "))
-		}
-
-		fmt.Println(item.diff)
-
-		if summary != "" {
-			text += music.Title + "\n" + summary + "\n"
 		}
 
 		bytes, err := json.Marshal(newMusic)
@@ -240,6 +260,8 @@ func main() {
 
 		items = append(items, item)
 	}
+
+	tweet(items)
 
 	log.Printf("Tweet:\n%s", text)
 
