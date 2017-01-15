@@ -4,15 +4,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/ChimeraCoder/anaconda"
 	"github.com/garyburd/redigo/redis"
 	"github.com/lycoris0731/go-groovecoaster/groovecoaster"
 )
 
-var c redis.Conn
+var (
+	c redis.Conn
+)
 
 func lastDateFromRedis() (time.Time, error) {
 	log.Println("Fetching last played date from Redis...")
@@ -81,11 +85,31 @@ func musicFromRedis(id string) (*groovecoaster.MusicDetail, error) {
 	return &music, nil
 }
 
+func tweet(text string) error {
+	anaconda.SetConsumerKey(os.Getenv("TWITTER_CONSUMER_KEY"))
+	anaconda.SetConsumerSecret(os.Getenv("TWITTER_CONSUMER_SECRET"))
+	api := anaconda.NewTwitterApi(os.Getenv("TWITTER_ACCESS_TOKEN"), os.Getenv("TWITTER_ACCESS_TOKEN_SECRET"))
+	_, err := api.PostTweet(text, nil)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+type item struct {
+	name string
+	diff []string
+}
+
+func (i item) String() string {
+	return ""
+}
+
 func main() {
 	client := groovecoaster.New()
 
 	var err error
-
 	log.Println("Connecting to Redis server...")
 	c, err = redis.Dial("tcp", ":6379")
 	if err != nil {
@@ -113,6 +137,7 @@ func main() {
 
 	text := ""
 
+	var items []item
 	for _, music := range splitnewMusicSummary(summary, lastDate) {
 		old, err := musicFromRedis(strconv.Itoa(music.ID))
 		if err != nil {
@@ -126,19 +151,11 @@ func main() {
 			return
 		}
 
-		if old == nil {
-			bytes, err := json.Marshal(newMusic)
-			if err != nil {
-				log.Print(err)
-				return
-			}
-			c.Do("SET", music.ID, string(bytes))
+		var item item
+		item.name = music.Title
 
-			old, err = musicFromRedis(strconv.Itoa(music.ID))
-			if err != nil {
-				log.Print(err)
-				return
-			}
+		if old == nil {
+			old = newMusic
 		}
 
 		results := []*groovecoaster.Result{newMusic.Simple, newMusic.Normal, newMusic.Hard}
@@ -203,7 +220,10 @@ func main() {
 			}
 
 			summary += diffName + strings.Join(archived, ", ") + "\n"
+			item.diff = append(item.diff, strings.Join(archived, ", "))
 		}
+
+		fmt.Println(item.diff)
 
 		if summary != "" {
 			text += music.Title + "\n" + summary + "\n"
@@ -217,6 +237,8 @@ func main() {
 
 		c.Do("SET", music.ID, string(bytes))
 		log.Printf("Updated music cache: %s", music.Title)
+
+		items = append(items, item)
 	}
 
 	log.Printf("Tweet:\n%s", text)
