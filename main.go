@@ -158,19 +158,19 @@ func main() {
 
 			switch groovecoaster.Difficulty(i) {
 			case groovecoaster.Simple:
-				diffName = "  [Simple] "
+				diffName = "  [S] "
 				oldDiff = old.Simple
 			case groovecoaster.Normal:
-				diffName = "  [Normal] "
+				diffName = "  [N] "
 				oldDiff = old.Normal
 			case groovecoaster.Hard:
-				diffName = "  [Hard] "
+				diffName = "  [H] "
 				oldDiff = old.Hard
 			case groovecoaster.Extra:
 				if !newMusic.HasEx {
 					continue
 				}
-				diffName = "  [Extra] "
+				diffName = "  [E] "
 				oldDiff = old.Extra
 			}
 
@@ -179,23 +179,23 @@ func main() {
 			// どれかにあてはまる場合
 			switch {
 			case diff.Perfect == 1:
-				archived = append(archived, "初 Perfect")
+				archived = append(archived, "Perf")
 			case diff.FullChain == 1:
-				archived = append(archived, "初 FullChain")
+				archived = append(archived, "FC")
 			case diff.NoMiss == 1:
-				archived = append(archived, "初 NoMiss")
+				archived = append(archived, "NM")
 			}
 
 			if diff.MaxChain > oldDiff.MaxChain {
-				archived = append(archived, fmt.Sprintf("Chain +%d", diff.MaxChain-oldDiff.MaxChain))
+				archived = append(archived, fmt.Sprintf("⛓ +%d", diff.MaxChain-oldDiff.MaxChain))
 			}
 
 			if diff.PlayCount == 100 {
-				archived = append(archived, "100 Play!")
+				archived = append(archived, "100 Played!")
 			}
 
 			if diff.Score > oldDiff.Score {
-				archived = append(archived, fmt.Sprintf("Score +%d", diff.MaxChain-oldDiff.MaxChain))
+				archived = append(archived, fmt.Sprintf("💯 +%d", diff.MaxChain-oldDiff.MaxChain))
 			}
 
 			if len(archived) == 0 {
@@ -219,7 +219,10 @@ func main() {
 		log.Printf("Updated music cache: %s", music.Title)
 	}
 
-	log.Println("Updated lastDate")
+	log.Printf("Tweet:\n%s", text)
+
 	c.Do("SET", "lastDate", time.Now().Format("2006-01-02 15:04:05"))
+	log.Println("Updated lastDate")
+
 	log.Println("Completed")
 }
