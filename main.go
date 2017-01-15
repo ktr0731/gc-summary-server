@@ -39,7 +39,7 @@ func (i item) String() string {
 		text += v + "\n"
 	}
 
-	return text
+	return text + "\n"
 }
 
 func lastDateFromRedis() (time.Time, error) {
@@ -119,7 +119,7 @@ func tweet(items []item) error {
 		if len(item.diff) != 0 {
 			text := item.String()
 			if len(tweet+text) > 140 {
-				_, err := api.PostTweet(tweet, nil)
+				_, err := api.PostTweet(strings.TrimSpace(tweet), nil)
 				if err != nil {
 					return err
 				}
@@ -130,7 +130,7 @@ func tweet(items []item) error {
 	}
 
 	if tweet != "" {
-		_, err := api.PostTweet(tweet, nil)
+		_, err := api.PostTweet(strings.TrimSpace(tweet), nil)
 		if err != nil {
 			return err
 		}
@@ -168,8 +168,6 @@ func main() {
 		return
 	}
 	log.Println("Fetching musics summary was successful")
-
-	text := ""
 
 	splittedSummary := splitMusicSummary(summary, lastDate)
 	items := make([]item, len(splittedSummary))
@@ -262,8 +260,6 @@ func main() {
 	}
 
 	tweet(items)
-
-	log.Printf("Tweet:\n%s", text)
 
 	c.Do("SET", "lastDate", time.Now().Format("2006-01-02 15:04:05"))
 	log.Println("Updated lastDate")
