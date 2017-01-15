@@ -16,6 +16,17 @@ var c redis.Conn
 
 func lastDateFromRedis() (time.Time, error) {
 	log.Println("Fetching last played date from Redis...")
+
+	exists, err := redis.Bool(c.Do("EXISTS", "lastDate"))
+	if err != nil {
+		return time.Time{}, fmt.Errorf("cannot read lastDate from Redis: %s", err)
+	}
+
+	if !exists {
+		log.Println("Seted lastDate")
+		c.Do("SET", "lastDate", time.Now().Format("2006-01-02 15:04:05"))
+	}
+
 	loc, _ := time.LoadLocation("Asia/Tokyo")
 
 	lastDateString, err := redis.String(c.Do("GET", "lastDate"))
@@ -85,16 +96,6 @@ func main() {
 		c.Close()
 		log.Println("Redis Connection closed")
 	}()
-
-	exists, err := redis.Bool(c.Do("EXISTS", "lastDate"))
-	if err != nil {
-		log.Printf("cannot read lastDate from Redis: %s", err)
-		return
-	}
-
-	if !exists {
-		c.Do("SET", "lastDate", time.Now())
-	}
 
 	lastDate, err := lastDateFromRedis()
 	if err != nil {
@@ -219,6 +220,6 @@ func main() {
 	}
 
 	log.Println("Updated lastDate")
-	c.Do("SET", "lastDate", time.Now())
+	c.Do("SET", "lastDate", time.Now().Format("2006-01-02 15:04:05"))
 	log.Println("Completed")
 }
