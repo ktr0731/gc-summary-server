@@ -69,71 +69,76 @@ func lastDateFromRedis() (time.Time, error) {
 	return lastDate, nil
 }
 
-func splitMusicSummary(summary []*groovecoaster.MusicSummary, lastDate time.Time) []*groovecoaster.MusicSummary {
+func splitMusicSummary(summary []groovecoaster.MusicSummary, lastDate time.Time) []groovecoaster.MusicSummary {
 	loc, _ := time.LoadLocation("Asia/Tokyo")
 
 	for i, m := range summary {
 		date, err := time.ParseInLocation("2006-01-02 15:04:05", m.LastPlayTime, loc)
 		if err != nil {
-			log.Print(err)
+			log.Println(err)
 			return nil
 		}
 
 		if date.Equal(lastDate) || lastDate.After(date) {
+			log.Printf("Played musics after last played date: %#v", summary[:i])
 			return summary[:i]
 		}
 	}
 
-	return []*groovecoaster.MusicSummary{}
+	return []groovecoaster.MusicSummary{}
 }
 
-func musicFromRedis(id string) (*groovecoaster.MusicDetail, error) {
+func musicFromRedis(id string) (groovecoaster.MusicDetail, error) {
 	exists, err := redis.Bool(c.Do("EXISTS", id))
 	if err != nil {
-		return nil, fmt.Errorf("cannot confirm whether music is exists from Redis: %s", err)
+		return groovecoaster.MusicDetail{}, fmt.Errorf("cannot confirm whether music is exists from Redis: %s", err)
 	}
 	if !exists {
-		return nil, nil
+		return groovecoaster.MusicDetail{}, nil
 	}
 
 	musicString, err := redis.String(c.Do("GET", id))
 	if err != nil {
-		return nil, fmt.Errorf("cannot read music from Redis: %s", err)
+		return groovecoaster.MusicDetail{}, fmt.Errorf("cannot read music from Redis: %s", err)
 	}
 
 	var music groovecoaster.MusicDetail
 	if err := json.Unmarshal([]byte(musicString), &music); err != nil {
-		return nil, fmt.Errorf("cannot unmarshal music: %s", err)
+		return groovecoaster.MusicDetail{}, fmt.Errorf("cannot unmarshal music: %s", err)
 	}
 
-	return &music, nil
+	return music, nil
 }
 
 func tweet(items []item) error {
 	anaconda.SetConsumerKey(os.Getenv("TWITTER_CONSUMER_KEY"))
 	anaconda.SetConsumerSecret(os.Getenv("TWITTER_CONSUMER_SECRET"))
-	api := anaconda.NewTwitterApi(os.Getenv("TWITTER_ACCESS_TOKEN"), os.Getenv("TWITTER_ACCESS_TOKEN_SECRET"))
+	// api := anaconda.NewTwitterApi(os.Getenv("TWITTER_ACCESS_TOKEN"), os.Getenv("TWITTER_ACCESS_TOKEN_SECRET"))
 
 	tweet := ""
 	for _, item := range items {
 		if len(item.diff) != 0 {
 			text := item.String()
 			if len(tweet+text) > 140 {
-				_, err := api.PostTweet(strings.TrimSpace(tweet), nil)
-				if err != nil {
-					return err
-				}
+				// _, err := api.PostTweet(strings.TrimSpace(tweet), nil)
+				// if err != nil {
+				// 	return err
+				// }
+				fmt.Println(tweet)
 
 				tweet = text
+			} else {
+				tweet += text
 			}
 		}
 	}
 
 	if tweet != "" {
-		_, err := api.PostTweet(strings.TrimSpace(tweet), nil)
-		if err != nil {
-			return err
-		}
+		fmt.Println(tweet)
+		// _, err := api.PostTweet(strings.TrimSpace(tweet), nil)
+		// if err != nil {
+		// 	return err
+		// }
 	}
 
 	log.Println("Tweeted")
@@ -157,14 +162,15 @@ func main() {
 
 	lastDate, err := lastDateFromRedis()
 	if err != nil {
-		log.Print(err)
+		log.Println(err)
 		return
 	}
+	log.Println("last updated:", lastDate)
 
 	log.Println("Fetching musics summary from mypage...")
 	summary, err := client.MusicSummary()
 	if err != nil {
-		log.Print(err)
+		log.Println(err)
 		return
 	}
 	log.Println("Fetching musics summary was successful")
@@ -174,34 +180,34 @@ func main() {
 	for _, music := range splittedSummary {
 		oldMusic, err := musicFromRedis(strconv.Itoa(music.ID))
 		if err != nil {
-			log.Print(err)
+			log.Println(err)
 			return
 		}
 
 		newMusic, err := client.Music(music.ID)
 		if err != nil {
-			log.Print(err)
+			log.Println(err)
 			return
 		}
 
 		var item item
 		item.name = music.Title
 
-		if oldMusic == nil {
+		if oldMusic.ID == "" {
 			oldMusic = newMusic
 		}
 
-		results := []*groovecoaster.Result{newMusic.Simple, newMusic.Normal, newMusic.Hard}
+		results := []groovecoaster.Result{newMusic.Simple, newMusic.Normal, newMusic.Hard}
 		if newMusic.HasEx {
 			results = append(results, newMusic.Extra)
 		}
 
 		for i, diff := range results {
-			if diff == nil {
+			if diff.PlayCount == 0 {
 				continue
 			}
 
-			var oldMusicDiff *groovecoaster.Result
+			var oldMusicDiff groovecoaster.Result
 			archived := []string{}
 
 			switch groovecoaster.Difficulty(i) {
@@ -249,7 +255,7 @@ func main() {
 
 		bytes, err := json.Marshal(newMusic)
 		if err != nil {
-			log.Print(err)
+			log.Println(err)
 			return
 		}
 
@@ -259,7 +265,11 @@ func main() {
 		items = append(items, item)
 	}
 
-	tweet(items)
+	err = tweet(items)
+	if err != nil {
+		log.Println(err)
+		return
+	}
 
 	c.Do("SET", "lastDate", time.Now().Format("2006-01-02 15:04:05"))
 	log.Println("Updated lastDate")
