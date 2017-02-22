@@ -3,7 +3,9 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net"
 	"strconv"
 	"strings"
 	"time"
@@ -109,6 +111,30 @@ func musicFromRedis(id string) (groovecoaster.MusicDetail, error) {
 }
 
 func main() {
+	ln, err := net.Listen("tcp", ":8888")
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	log.Println("Listen in localhost:8888")
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
+		summary := generateSummary()
+		if summary == "" {
+			summary = "No change...\nWhy don't play GrooveCoaster?\n"
+		}
+		io.WriteString(conn, summary)
+		conn.Close()
+	}
+}
+
+func generateSummary() string {
 	client := groovecoaster.New()
 
 	var err error
@@ -126,7 +152,7 @@ func main() {
 	lastDate, err := lastDateFromRedis()
 	if err != nil {
 		log.Println(err)
-		return
+		return ""
 	}
 	log.Println("last updated:", lastDate)
 
@@ -134,7 +160,7 @@ func main() {
 	summary, err := client.MusicSummary()
 	if err != nil {
 		log.Println(err)
-		return
+		return ""
 	}
 	log.Println("Fetching musics summary was successful")
 
@@ -144,13 +170,13 @@ func main() {
 		oldMusic, err := musicFromRedis(strconv.Itoa(music.ID))
 		if err != nil {
 			log.Println(err)
-			return
+			return ""
 		}
 
 		newMusic, err := client.Music(music.ID)
 		if err != nil {
 			log.Println(err)
-			return
+			return ""
 		}
 
 		var item item
@@ -219,7 +245,7 @@ func main() {
 		bytes, err := json.Marshal(newMusic)
 		if err != nil {
 			log.Println(err)
-			return
+			return ""
 		}
 
 		c.Do("SET", music.ID, string(bytes))
@@ -242,4 +268,6 @@ func main() {
 	log.Println("Updated lastDate")
 
 	log.Println("Completed")
+
+	return text
 }
