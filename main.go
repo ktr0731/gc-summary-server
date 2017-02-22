@@ -4,12 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/ChimeraCoder/anaconda"
 	"github.com/garyburd/redigo/redis"
 	"github.com/lycoris0731/go-groovecoaster/groovecoaster"
 )
@@ -27,13 +25,13 @@ func (i item) String() string {
 	for j, v := range i.diff {
 		switch groovecoaster.Difficulty(j) {
 		case groovecoaster.Simple:
-			text += "  [S] "
+			text += "  [Simple] "
 		case groovecoaster.Normal:
-			text += "  [N] "
+			text += "  [Normal] "
 		case groovecoaster.Hard:
-			text += "  [H] "
+			text += "  [Hard]   "
 		case groovecoaster.Extra:
-			text += "  [E] "
+			text += "  [Extra]  "
 		}
 
 		text += v + "\n"
@@ -110,41 +108,6 @@ func musicFromRedis(id string) (groovecoaster.MusicDetail, error) {
 	return music, nil
 }
 
-func tweet(items []item) error {
-	anaconda.SetConsumerKey(os.Getenv("TWITTER_CONSUMER_KEY"))
-	anaconda.SetConsumerSecret(os.Getenv("TWITTER_CONSUMER_SECRET"))
-	// api := anaconda.NewTwitterApi(os.Getenv("TWITTER_ACCESS_TOKEN"), os.Getenv("TWITTER_ACCESS_TOKEN_SECRET"))
-
-	tweet := ""
-	for _, item := range items {
-		if len(item.diff) != 0 {
-			text := item.String()
-			if len(tweet+text) > 140 {
-				// _, err := api.PostTweet(strings.TrimSpace(tweet), nil)
-				// if err != nil {
-				// 	return err
-				// }
-				fmt.Println(tweet)
-
-				tweet = text
-			} else {
-				tweet += text
-			}
-		}
-	}
-
-	if tweet != "" {
-		fmt.Println(tweet)
-		// _, err := api.PostTweet(strings.TrimSpace(tweet), nil)
-		// if err != nil {
-		// 	return err
-		// }
-	}
-
-	log.Println("Tweeted")
-
-	return nil
-}
 func main() {
 	client := groovecoaster.New()
 
@@ -227,23 +190,23 @@ func main() {
 			// どれかにあてはまる場合
 			switch {
 			case diff.Perfect == 1:
-				archived = append(archived, "Perf")
+				archived = append(archived, "Perfect")
 			case diff.FullChain == 1:
-				archived = append(archived, "FC")
+				archived = append(archived, "FullChain")
 			case diff.NoMiss == 1:
-				archived = append(archived, "NM")
+				archived = append(archived, "NoMiss")
 			}
 
 			if diff.MaxChain > oldMusicDiff.MaxChain {
-				archived = append(archived, fmt.Sprintf("⛓ +%d", diff.MaxChain-oldMusicDiff.MaxChain))
+				archived = append(archived, fmt.Sprintf(":chains: Max Chain +%d", diff.MaxChain-oldMusicDiff.MaxChain))
 			}
 
 			if diff.PlayCount == 100 {
-				archived = append(archived, "100 Played!")
+				archived = append(archived, ":tada: Total played time is over 100")
 			}
 
 			if diff.Score > oldMusicDiff.Score {
-				archived = append(archived, fmt.Sprintf("💯 +%d", diff.MaxChain-oldMusicDiff.MaxChain))
+				archived = append(archived, fmt.Sprintf(":chart_with_upwards_trend: Total Score +%d", diff.MaxChain-oldMusicDiff.MaxChain))
 			}
 
 			if len(archived) == 0 {
@@ -265,11 +228,15 @@ func main() {
 		items = append(items, item)
 	}
 
-	err = tweet(items)
-	if err != nil {
-		log.Println(err)
-		return
+	// text := fmt.Sprintf("GrooveCoaster Summary of %s\n(From %s)\n\n", "ktr", lastDate.String())
+	text := ""
+	for _, item := range items {
+		if len(item.diff) == 0 {
+			continue
+		}
+		text += item.String() + "\n"
 	}
+	fmt.Println(text)
 
 	c.Do("SET", "lastDate", time.Now().Format("2006-01-02 15:04:05"))
 	log.Println("Updated lastDate")
