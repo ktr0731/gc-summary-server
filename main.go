@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
+	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -42,96 +43,17 @@ func (i item) String() string {
 	return text + "\n"
 }
 
-func lastDateFromRedis() (time.Time, error) {
-	log.Println("Fetching last played date from Redis...")
-
-	exists, err := redis.Bool(c.Do("EXISTS", "lastDate"))
-	if err != nil {
-		return time.Time{}, fmt.Errorf("cannot read lastDate from Redis: %s", err)
-	}
-
-	if !exists {
-		log.Println("Seted lastDate")
-		c.Do("SET", "lastDate", time.Now().Format("2006-01-02 15:04:05"))
-	}
-
-	loc, _ := time.LoadLocation("Asia/Tokyo")
-
-	lastDateString, err := redis.String(c.Do("GET", "lastDate"))
-	if err != nil {
-		return time.Time{}, fmt.Errorf("cannot get lastDate from Redis: %s", err)
-	}
-
-	lastDate, err := time.ParseInLocation("2006-01-02 15:04:05", lastDateString, loc)
-
-	log.Printf("Last played date: %s", lastDate)
-
-	return lastDate, nil
-}
-
-func splitMusicSummary(summary []groovecoaster.MusicSummary, lastDate time.Time) []groovecoaster.MusicSummary {
-	loc, _ := time.LoadLocation("Asia/Tokyo")
-
-	for i, m := range summary {
-		date, err := time.ParseInLocation("2006-01-02 15:04:05", m.LastPlayTime, loc)
-		if err != nil {
-			log.Println(err)
-			return nil
-		}
-
-		if date.Equal(lastDate) || lastDate.After(date) {
-			log.Printf("Played musics after last played date: %#v", summary[:i])
-			return summary[:i]
-		}
-	}
-
-	return []groovecoaster.MusicSummary{}
-}
-
-func musicFromRedis(id string) (groovecoaster.MusicDetail, error) {
-	exists, err := redis.Bool(c.Do("EXISTS", id))
-	if err != nil {
-		return groovecoaster.MusicDetail{}, fmt.Errorf("cannot confirm whether music is exists from Redis: %s", err)
-	}
-	if !exists {
-		return groovecoaster.MusicDetail{}, nil
-	}
-
-	musicString, err := redis.String(c.Do("GET", id))
-	if err != nil {
-		return groovecoaster.MusicDetail{}, fmt.Errorf("cannot read music from Redis: %s", err)
-	}
-
-	var music groovecoaster.MusicDetail
-	if err := json.Unmarshal([]byte(musicString), &music); err != nil {
-		return groovecoaster.MusicDetail{}, fmt.Errorf("cannot unmarshal music: %s", err)
-	}
-
-	return music, nil
-}
-
 func main() {
-	ln, err := net.Listen("tcp", ":8888")
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	log.Println("Listen in localhost:8888")
-	for {
-		conn, err := ln.Accept()
-		if err != nil {
-			log.Println(err)
-			return
-		}
-
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		summary := generateSummary()
 		if summary == "" {
 			summary = "No change...\nWhy don't play GrooveCoaster?\n"
 		}
-		io.WriteString(conn, summary)
-		conn.Close()
-	}
+		io.WriteString(w, summary)
+	})
+
+	log.Println("Listen in", ":"+os.Getenv("PORT"))
+	http.ListenAndServe(":"+os.Getenv("PORT"), nil)
 }
 
 func generateSummary() string {
@@ -139,7 +61,7 @@ func generateSummary() string {
 
 	var err error
 	log.Println("Connecting to Redis server...")
-	c, err = redis.Dial("tcp", ":6379")
+	c, err = redis.DialURL(os.Getenv("REDISTOGO_URL"))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -262,12 +184,79 @@ func generateSummary() string {
 		}
 		text += item.String() + "\n"
 	}
-	fmt.Println(text)
+	log.Println(text)
 
 	c.Do("SET", "lastDate", time.Now().Format("2006-01-02 15:04:05"))
 	log.Println("Updated lastDate")
 
 	log.Println("Completed")
 
-	return text
+	return strings.TrimSpace(text + "\n")
+}
+
+func lastDateFromRedis() (time.Time, error) {
+	log.Println("Fetching last played date from Redis...")
+
+	exists, err := redis.Bool(c.Do("EXISTS", "lastDate"))
+	if err != nil {
+		return time.Time{}, fmt.Errorf("cannot read lastDate from Redis: %s", err)
+	}
+
+	if !exists {
+		log.Println("Seted lastDate")
+		c.Do("SET", "lastDate", time.Now().Format("2006-01-02 15:04:05"))
+	}
+
+	loc, _ := time.LoadLocation("Asia/Tokyo")
+
+	lastDateString, err := redis.String(c.Do("GET", "lastDate"))
+	if err != nil {
+		return time.Time{}, fmt.Errorf("cannot get lastDate from Redis: %s", err)
+	}
+
+	lastDate, err := time.ParseInLocation("2006-01-02 15:04:05", lastDateString, loc)
+
+	log.Printf("Last played date: %s", lastDate)
+
+	return lastDate, nil
+}
+
+func splitMusicSummary(summary []groovecoaster.MusicSummary, lastDate time.Time) []groovecoaster.MusicSummary {
+	loc, _ := time.LoadLocation("Asia/Tokyo")
+
+	for i, m := range summary {
+		date, err := time.ParseInLocation("2006-01-02 15:04:05", m.LastPlayTime, loc)
+		if err != nil {
+			log.Println(err)
+			return nil
+		}
+
+		if date.Equal(lastDate) || lastDate.After(date) {
+			return summary[:i]
+		}
+	}
+
+	return []groovecoaster.MusicSummary{}
+}
+
+func musicFromRedis(id string) (groovecoaster.MusicDetail, error) {
+	exists, err := redis.Bool(c.Do("EXISTS", id))
+	if err != nil {
+		return groovecoaster.MusicDetail{}, fmt.Errorf("cannot confirm whether music is exists from Redis: %s", err)
+	}
+	if !exists {
+		return groovecoaster.MusicDetail{}, nil
+	}
+
+	musicString, err := redis.String(c.Do("GET", id))
+	if err != nil {
+		return groovecoaster.MusicDetail{}, fmt.Errorf("cannot read music from Redis: %s", err)
+	}
+
+	var music groovecoaster.MusicDetail
+	if err := json.Unmarshal([]byte(musicString), &music); err != nil {
+		return groovecoaster.MusicDetail{}, fmt.Errorf("cannot unmarshal music: %s", err)
+	}
+
+	return music, nil
 }
