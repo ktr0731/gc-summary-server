@@ -13,12 +13,15 @@ If accessed to the server, it returns response with summary plain text.
 - Redis
 
 ## Installation
+If use Heroku, please click Heroku deploy button!  
+
+Manual.  
 ``` go
 $ go get github.com/lycoris0731/gc-summary-server
 ```
 
 ## Usage
-You need to set environment variables.  
+If you want to deploy except Heroku, you need to set environment variables.  
 ``` sh
 export NESICA_CARD_ID=""  # Your NESiCA ID
 export NESICA_PASSWORD="" # Your NESiCA ID password
@@ -31,5 +34,8 @@ Start server.
 $ ./gc-summary-server
 ```
 
+## Also
+[Linka (Slack bot)](https://github.com/lycoris0731/linka)
+
 ## License
-Please see LICENSE.
+Please see [LICENSE](./LICENSE).

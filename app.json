@@ -16,7 +16,7 @@
     }
   },
   "addons": [
-    "heroku-redis:hobby-dev"
+    "redistogo:nano"
   ],
   "buildpacks": [
     {
