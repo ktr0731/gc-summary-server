@@ -1,0 +1,26 @@
+{
+  "name": "Groove Coaster Summary Server",
+  "description": "Receive your last result in Groove Coaster 3",
+  "keywords": [
+    "groovecoaster"
+  ],
+  "website": "https://github.com/lycoris0731/gc-summary-server",
+  "repository": "https://github.com/lycoris0731/gc-summary-server",
+  "success_url": "/",
+  "env": {
+    "NESICA_CARD_ID": {
+      "description": "Your NESiCA ID"
+    },
+    "NESICA_PASSWORD": {
+     "description": "Your NESiCA ID password"
+    }
+  },
+  "addons": [
+    "heroku-redis:hobby-dev"
+  ],
+  "buildpacks": [
+    {
+      "url": "heroku/go"
+    }
+  ]
+}

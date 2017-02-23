@@ -1,4 +1,6 @@
 # Groove Coaster Summary
+[![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy)  
+Receive your last result in Groove Coaster 3.  
 ===
 
 ## Description  
