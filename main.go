@@ -176,8 +176,7 @@ func generateSummary() string {
 		items = append(items, item)
 	}
 
-	// text := fmt.Sprintf("GrooveCoaster Summary of %s\n(From %s)\n\n", "ktr", lastDate.String())
-	text := ""
+	text := fmt.Sprintf("GrooveCoaster Summary\n(From %s)\n\n", lastDate.String())
 	for _, item := range items {
 		if len(item.diff) == 0 {
 			continue
